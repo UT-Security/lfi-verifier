@@ -9,6 +9,11 @@ tests_x64 = [
   'x64/fail.s',
 ]
 
+tests_x64_large = [
+  'x64_large/pass.s',
+  'x64_large/fail.s',
+]
+
 go = find_program('go')
 
 clang = find_program('clang', required: false)
@@ -20,5 +25,9 @@ if clang.found()
 
   foreach t : tests_x64
     test('@0@'.format(t), go, args: ['run', 'runtest.go', '-arch', 'x64', lfiv_exec, t], workdir: meson.current_source_dir(), suite: ['lfi-verify', 'x64'], protocol: 'tap')
+  endforeach
+
+  foreach t : tests_x64_large
+    test('@0@'.format(t), go, args: ['run', 'runtest.go', '-arch', 'x64_large', lfiv_exec, t], workdir: meson.current_source_dir(), suite: ['lfi-verify', 'x64_large'], protocol: 'tap')
   endforeach
 endif

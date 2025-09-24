@@ -6,7 +6,7 @@
 
 enum LFIBoxType {
     LFI_BOX_FULL,
-    LFI_BOX_STORES,
+    LFI_BOX_STORES
 };
 
 struct LFIVOptions {
@@ -32,6 +32,10 @@ lfiv_verify_arm64(char *code, size_t size, uintptr_t addr, struct LFIVOptions *o
 // Run the x64 verifier.
 bool
 lfiv_verify_x64(char *code, size_t size, uintptr_t addr, struct LFIVOptions *opts);
+
+// Run the x64 large sandbox verifier
+bool
+lfiv_verify_x64_large(char *code, size_t size, uintptr_t addr, struct LFIVOptions *opts);
 
 // Run the riscv64 verifier.
 bool
