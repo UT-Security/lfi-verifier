@@ -276,7 +276,7 @@ static struct MacroInst macroinst_call(struct Verifier *v, uint8_t *buf, size_t 
 }
 #define GUARD_SZ 81920
 
-static struct MacroInst macroinst_store(struct Verifier *v, uint8_t *buf, size_t size) {
+static struct MacroInst macroinst_store_pext(struct Verifier *v, uint8_t *buf, size_t size) {
     // note: for  SIB, the actual address will be moved
     // into r11 beforehand
     // this will not work if we cannot reserve r11
@@ -308,6 +308,55 @@ static struct MacroInst macroinst_store(struct Verifier *v, uint8_t *buf, size_t
         return (struct MacroInst){-1, 0};
 
     return (struct MacroInst){i_pext.size + i_store.size, 2};
+}
+
+static struct MacroInst macroinst_store_and(struct Verifier *v, uint8_t *buf, size_t size) {
+    // stores can follow an alternate pattern:
+    // movq %rX, %r11
+    // andq %r15, %r11
+    // mov <anything> (%r14, %r11)
+    // The rewriter likes to do this for
+    // addq/andq/xorq/etc. (grrr cisc)
+
+    FdInstr i_mov, i_and, i_store;
+    size_t offset = 0;
+    if (fd_decode(&buf[offset], size, 64, 0, &i_mov) < 0)
+        return (struct MacroInst){-1, 0};
+    offset += i_mov.size;
+    if (fd_decode(&buf[offset], size - offset, 64, 0, &i_and) < 0)
+        return (struct MacroInst){-1, 0};
+    offset += i_and.size;
+    if (fd_decode(&buf[offset], size - offset, 64, 0, &i_store) < 0) {
+        return (struct MacroInst){-1, 0};
+    }
+    offset += i_store.size;
+
+    if (FD_TYPE(&i_mov) != FDI_MOV ||
+            FD_OP_TYPE(&i_mov, 0) != FD_OT_REG ||
+            FD_OP_TYPE(&i_mov, 1) != FD_OT_REG ||
+            FD_OP_REG(&i_mov, 0) != FD_REG_R11)
+        return (struct MacroInst){-1, 0};
+
+    if (FD_TYPE(&i_and) != FDI_AND ||
+            FD_OP_TYPE(&i_and, 0) != FD_OT_REG ||
+            FD_OP_TYPE(&i_and, 1) != FD_OT_REG ||
+            FD_OP_REG(&i_and, 0) != FD_REG_R11 ||
+            FD_OP_REG(&i_and, 1) != FD_REG_R15)
+        return (struct MacroInst){-1, 0};
+    //we actually don't really care if the 
+    //store instruction is a mov. We just care
+    //that it only writes to the memory address specified
+    //in operand 0
+    if (FD_TYPE(&i_store) != FDI_MOV ||
+            FD_OP_TYPE(&i_store, 0) != FD_OT_MEM ||
+            FD_OP_BASE(&i_store, 0) != FD_REG_R14 ||
+            FD_OP_INDEX(&i_store, 0) != FD_REG_R11 ||
+            FD_OP_SCALE(&i_store, 0) != 0 ||
+            FD_OP_DISP(&i_store, 0) > GUARD_SZ ||
+            FD_OP_DISP(&i_store, 0) < -GUARD_SZ)
+        return (struct MacroInst){-1, 0};
+
+    return (struct MacroInst){offset, 3};
 }
 
 static struct MacroInst macroinst_load(struct Verifier *v, uint8_t *buf, size_t size) {
@@ -440,7 +489,8 @@ static MacroFn mfns[] = {
     macroinst_stos,
     macroinst_movs,
     macroinst_load,
-    macroinst_store,
+    macroinst_store_pext,
+    macroinst_store_and,
 };
 
 static struct MacroInst macroinst(struct Verifier *v, uint8_t *buf, size_t size) {

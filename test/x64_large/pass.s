@@ -120,3 +120,7 @@ movsq
 ---
 // flags: --sandbox=stores
 mov (%rdi), %rax
+---
+movq %rdi, %r11
+andq %r15, %r11
+movq $0x0, (%r14, %r11)
