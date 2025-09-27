@@ -16,7 +16,7 @@ static char args_doc[] = "INPUT...";
 
 static struct argp_option options[] = {
     { "help",           'h',               0,      0, "show this message", -1 },
-    { "arch",           'a',               "ARCH", 0, "run on architecture (x64,arm64)" },
+    { "arch",           'a',               "ARCH", 0, "run on architecture (x64,x64_large,arm64)" },
     { "n",              'n',               "NUM",  0, "run the verifier n times (for benchmarking)" },
     { "sandbox",        's',               "TYPE", 0, "Select sandbox type (full,stores)" },
     { 0 },
@@ -28,6 +28,9 @@ static char *
 archname(char *s)
 {
 #ifdef ARCH_X64
+    if(strcmp(s, "x64_large") == 0) {
+        return "x64_large";
+    }
     if (strcmp(s, "amd64") == 0 || strcmp(s, "x64") == 0 || strcmp(s, "x86_64") == 0)
         return "x64";
 #endif
@@ -45,6 +48,8 @@ parse_opt(int key, char *arg, struct argp_state *state)
 
     char *arch;
     switch (key) {
+    case 'l':
+        
     case 'h':
         argp_state_help(state, state->out_stream, ARGP_HELP_STD_HELP);
         break;
@@ -54,6 +59,7 @@ parse_opt(int key, char *arg, struct argp_state *state)
     case 'a':
         arch = archname(arg);
         if (strcmp(arch, "x64") != 0 &&
+            strcmp(arch, "x64_large") != 0 &&
             strcmp(arch, "arm64") != 0) {
             fprintf(stderr, "unknown architecture: %s\n", arg);
             return ARGP_ERR_UNKNOWN;
@@ -117,6 +123,10 @@ verify(struct LFIVerifier *v, const char *filename)
     switch (ehdr.e_machine) {
     case EM_X86_64:
 #ifdef ARCH_X64
+        if(args.arch && strcmp(args.arch, "x64_large") == 0) {
+            v->verify = lfiv_verify_x64_large;
+            break;
+        }
         if (!args.arch || strcmp(args.arch, "x64") == 0) {
             v->verify = lfiv_verify_x64;
             break;
