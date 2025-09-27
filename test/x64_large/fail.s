@@ -91,10 +91,6 @@ mov %fs:(%rsp), %rax
 ---
 mov %fs:(%rip), %rax
 ---
-mov %gs, %rax
----
-mov %rax, %gs
----
 syscall
 ---
 wrgsbase %r11
@@ -120,3 +116,5 @@ jmp *%r14
 pext %r15, %rdi, %r11
 mov %rax, 91920(%r14, %r11)
 .bundle_unlock
+---
+mov %gs:32, %rdi

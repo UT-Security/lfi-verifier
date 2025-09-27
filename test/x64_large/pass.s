@@ -19,9 +19,7 @@ add $8, %rdi
 .p2align 5
 foo:
 ---
-mov %gs:(%eax), %rax
----
-mov %gs:12(%eax, %edi, 4), %rax
+mov %gs:0, %rax
 ---
 leaq 8(%rax), %rax
 ---
@@ -119,3 +117,6 @@ pext %r15, %rsi, %rsi
 leaq (%r14, %rsi), %rsi
 movsq
 .bundle_unlock
+---
+// flags: --sandbox=stores
+mov (%rdi), %rax

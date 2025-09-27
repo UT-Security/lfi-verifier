@@ -133,18 +133,20 @@ static bool okmnem(struct Verifier *v, FdInstr *instr) {
     }
 }
 
+static bool isload(FDInstr *instr) {
+
+}
+
 static void chkmem(struct Verifier *v, FdInstr *instr) {
     if (FD_TYPE(instr) == FDI_LEA || FD_TYPE(instr) == FDI_NOP)
         return;
 
-    bool storesonly = v->opts->box == LFI_BOX_STORES;
+    bool storesonly = v->ops->box == LFI_BOX_STORES;
     for (size_t i = 0; i < 4; i++) {
         if (FD_OP_TYPE(instr, i) == FD_OT_MEM) {
             if (FD_SEGMENT(instr) == FD_REG_GS) {
-                if (FD_OP_DISP(instr, i) != 0 ||
-                    FD_OP_BASE(instr, i) != FD_REG_NONE ||
-                    FD_OP_INDEX(instr, i) != FD_REG_NONE)
-                    verr(v, instr, "Can only access base of segmented memory");
+                if (FD_ADDRSIZE(instr) != 4)
+                    verr(v, instr, "segmented memory access must use 32-bit address");
                 continue;
             } else if (FD_SEGMENT(instr) == FD_REG_FS) {
                 verr(v, instr, "use of %%fs is not permitted");
@@ -153,11 +155,8 @@ static void chkmem(struct Verifier *v, FdInstr *instr) {
 
             if (FD_ADDRSIZE(instr) != 8)
                 verr(v, instr, "non-segmented memory access must use 64-bit address");
-            //As far as I can tell, xchg is the only instruction
-            //that clobbers memory without listing an address
-            //as its first/destination operand
             if(storesonly && i != 0 && FD_TYPE(instr) != FDI_XCHG)
-                continue;
+                continue
             if (FD_OP_BASE(instr, i) != FD_REG_SP &&
                     FD_OP_BASE(instr, i) != FD_REG_IP)
                 verr(v, instr, "invalid base register for memory access");
@@ -244,7 +243,6 @@ bool lfiv_verify_x64_large(char *code, size_t size, uintptr_t addr, struct LFIVO
 
     uint8_t insn_buf[15] = {0};
 
-    /*
     while (bdd_count < size) {
         uint8_t *insn = &insns[bdd_count];
         if (size - bdd_count < sizeof(insn_buf)) {
@@ -261,7 +259,6 @@ bool lfiv_verify_x64_large(char *code, size_t size, uintptr_t addr, struct LFIVO
         bdd_count += n;
         bdd_ninstr++;
     }
-    */
 
     v.addr = addr;
 
@@ -277,7 +274,7 @@ bool lfiv_verify_x64_large(char *code, size_t size, uintptr_t addr, struct LFIVO
     }
 
     if (!v.failed) {
-        //assert(bdd_ninstr == ninstr);
+        assert(bdd_ninstr == ninstr);
     }
 
     return !v.failed;
