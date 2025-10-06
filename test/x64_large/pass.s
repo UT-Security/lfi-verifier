@@ -124,3 +124,12 @@ mov (%rdi), %rax
 movq %rdi, %r11
 andq %r15, %r11
 movq $0x0, (%r14, %r11)
+---
+// flags: --sandbox=stores
+leaq (%r9, %rdi), %r11
+andq %r15, %r11
+add %rdi, (%r14, %r11)
+---
+nopq (%rax, %rax)
+andq %r15, %r11
+movq %rax, (%r14, %r11)

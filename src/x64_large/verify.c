@@ -158,6 +158,11 @@ static void chkmem(struct Verifier *v, FdInstr *instr) {
             //as its first/destination operand
             if(storesonly && i != 0 && FD_TYPE(instr) != FDI_XCHG)
                 continue;
+            if(storesonly && 
+                (FD_TYPE(instr) == FDI_CMP ||
+                 FD_TYPE(instr) == FDI_TEST)
+                )
+                continue;
             if (FD_OP_BASE(instr, i) != FD_REG_SP &&
                     FD_OP_BASE(instr, i) != FD_REG_IP)
                 verr(v, instr, "invalid base register for memory access");
@@ -218,6 +223,8 @@ static size_t vchkbundle(struct Verifier *v, uint8_t* buf, size_t size) {
         if (count + mi.size > v->bundlesize) {
             FdInstr instr;
             fd_decode(&buf[count], size - count, 64, 0, &instr);
+            printf("Count: %u \n", count);
+            printf("Instruction size: %u \n", mi.size);
             verr(v, &instr, "instruction spans bundle boundary");
             v->abort = true; // not useful to give further errors
             return ninstr;
