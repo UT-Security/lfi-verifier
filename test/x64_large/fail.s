@@ -118,3 +118,10 @@ mov %rax, 91920(%r14, %r11)
 .bundle_unlock
 ---
 mov %gs:32, %rdi
+---
+cmpxchg %rdi, %r15
+cmpxchg %r15, %rdi
+---
+stosq
+---
+movsq

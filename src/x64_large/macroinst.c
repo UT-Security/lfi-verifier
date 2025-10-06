@@ -65,15 +65,18 @@ static struct MacroInst macroinst_movs(struct Verifier *v, uint8_t *buf, size_t 
 
     FdInstr i_pext, i_lea, i_pext2, i_lea2, i_movs;
     size_t offset = 0;
+    size_t icount = 0;
+    bool storesonly = v->opts->box == LFI_BOX_STORES;
 
     if (fd_decode(&buf[offset], size - offset, 64, 0, &i_pext) < 0) {
         return (struct MacroInst){-1, 0};
     }
     offset += i_pext.size;
+    icount++;
     if (FD_TYPE(&i_pext) != FDI_PEXT ||
         !assert_reg(&i_pext, 0, FD_REG_DI, 8) ||
         !assert_reg(&i_pext, 1, FD_REG_DI, 8) ||
-        !assert_reg(&i_pext, 1, FD_REG_R15, 8)) {
+        !assert_reg(&i_pext, 2, FD_REG_R15, 8)) {
         return (struct MacroInst){-1, 0};
     }
 
@@ -81,6 +84,7 @@ static struct MacroInst macroinst_movs(struct Verifier *v, uint8_t *buf, size_t 
         return (struct MacroInst){-1, 0};
     }
     offset += i_lea.size;
+    icount++;
     if (FD_TYPE(&i_lea) != FDI_LEA ||
         !assert_reg(&i_lea, 0, FD_REG_DI, 8) ||
         FD_OP_TYPE(&i_lea, 1) != FD_OT_MEM ||
@@ -91,40 +95,46 @@ static struct MacroInst macroinst_movs(struct Verifier *v, uint8_t *buf, size_t 
         return (struct MacroInst){-1, 0};
     }
 
-    if (fd_decode(&buf[offset], size - offset, 64, 0, &i_pext2) < 0) {
-        return (struct MacroInst){-1, 0};
-    }
-    offset += i_pext2.size;
-    if (FD_TYPE(&i_pext2) != FDI_PEXT ||
-        !assert_reg(&i_pext2, 0, FD_REG_SI, 8) ||
-        !assert_reg(&i_pext2, 1, FD_REG_SI, 8) ||
-        !assert_reg(&i_pext2, 2, FD_REG_R15, 8)) {
-        return (struct MacroInst){-1, 0};
-    }
+    if(!storesonly) {
+        if (fd_decode(&buf[offset], size - offset, 64, 0, &i_pext2) < 0) {
+            return (struct MacroInst){-1, 0};
+        }
 
-    if (fd_decode(&buf[offset], size - offset, 64, 0, &i_lea2) < 0) {
-        return (struct MacroInst){-1, 0};
-    }
-    offset += i_lea2.size;
-    if (FD_TYPE(&i_lea2) != FDI_LEA ||
-        !assert_reg(&i_lea2, 0, FD_REG_SI, 8) ||
-        FD_OP_TYPE(&i_lea2, 1) != FD_OT_MEM ||
-        FD_OP_BASE(&i_lea2, 1) != FD_REG_R14 ||
-        FD_OP_INDEX(&i_lea2, 1) != FD_REG_SI ||
-        FD_OP_DISP(&i_lea2, 1) != 0 ||
-        FD_OP_SCALE(&i_lea2, 1) != 0){
-        return (struct MacroInst){-1, 0};
+        offset += i_pext2.size;
+        icount++;
+        if (FD_TYPE(&i_pext2) != FDI_PEXT ||
+            !assert_reg(&i_pext2, 0, FD_REG_SI, 8) ||
+            !assert_reg(&i_pext2, 1, FD_REG_SI, 8) ||
+            !assert_reg(&i_pext2, 2, FD_REG_R15, 8)) {
+            return (struct MacroInst){-1, 0};
+        }
+
+        if (fd_decode(&buf[offset], size - offset, 64, 0, &i_lea2) < 0) {
+            return (struct MacroInst){-1, 0};
+        }
+        offset += i_lea2.size;
+        icount++;
+        if (FD_TYPE(&i_lea2) != FDI_LEA ||
+            !assert_reg(&i_lea2, 0, FD_REG_SI, 8) ||
+            FD_OP_TYPE(&i_lea2, 1) != FD_OT_MEM ||
+            FD_OP_BASE(&i_lea2, 1) != FD_REG_R14 ||
+            FD_OP_INDEX(&i_lea2, 1) != FD_REG_SI ||
+            FD_OP_DISP(&i_lea2, 1) != 0 ||
+            FD_OP_SCALE(&i_lea2, 1) != 0){
+            return (struct MacroInst){-1, 0};
+        }
     }
 
     if (fd_decode(&buf[offset], size - offset, 64, 0, &i_movs) < 0) {
         return (struct MacroInst){-1, 0};
     }
     offset += i_movs.size;
+    icount++;
     if (FD_TYPE(&i_movs) != FDI_MOVS) {
         return (struct MacroInst){-1, 0};
     }
 
-    return (struct MacroInst){offset, 5};
+    return (struct MacroInst){offset, icount};
 }
 
 static struct MacroInst macroinst_jmp(struct Verifier *v, uint8_t *buf, size_t size) {

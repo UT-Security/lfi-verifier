@@ -114,4 +114,3 @@ movq (%r14, %r11), %r14
 andl $0xffffffe0, %r14d
 addq %r14, %r14
 jmp *%r14
----

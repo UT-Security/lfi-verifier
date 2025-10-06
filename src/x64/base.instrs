@@ -1426,7 +1426,7 @@ case FDI_STD:
 // case FDI_STGI:
 // case FDI_STI:
 // case FDI_STMXCSR:
-case FDI_STOS:
+// case FDI_STOS:
 // case FDI_STR:
 // case FDI_STTILECFG:
 // case FDI_STUI:
