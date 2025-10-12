@@ -133,3 +133,7 @@ add %rdi, (%r14, %r11)
 nopq (%rax, %rax)
 andq %r15, %r11
 movq %rax, (%r14, %r11)
+---
+pext %r15, %rbp, %rdi
+lea (%r14, %rdi), %rdi
+mov %bh, -0x4e(%rdi)

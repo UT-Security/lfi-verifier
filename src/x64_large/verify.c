@@ -141,6 +141,8 @@ static void chkmem(struct Verifier *v, FdInstr *instr) {
     for (size_t i = 0; i < 4; i++) {
         if (FD_OP_TYPE(instr, i) == FD_OT_MEM) {
             if (FD_SEGMENT(instr) == FD_REG_GS) {
+                if(storesonly && i != 0 && FD_TYPE(instr) != FDI_XCHG && FD_TYPE(instr) != FDI_CMPXCHG)
+                    continue;
                 if (FD_OP_DISP(instr, i) != 0 ||
                     FD_OP_BASE(instr, i) != FD_REG_NONE ||
                     FD_OP_INDEX(instr, i) != FD_REG_NONE)

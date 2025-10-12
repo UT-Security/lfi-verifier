@@ -111,12 +111,6 @@ andl $0xffffffe0, %r14d
 addq %r14, %r14
 jmp *%r14
 ---
-.bundle_align_mode 4
-.bundle_lock
-pext %r15, %rdi, %r11
-mov %rax, 91920(%r14, %r11)
-.bundle_unlock
----
 mov %gs:32, %rdi
 ---
 cmpxchg %rdi, %r15
