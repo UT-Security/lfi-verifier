@@ -19,6 +19,7 @@ static struct argp_option options[] = {
     { "arch",           'a',               "ARCH", 0, "run on architecture (x64,x64_large,arm64)" },
     { "n",              'n',               "NUM",  0, "run the verifier n times (for benchmarking)" },
     { "sandbox",        's',               "TYPE", 0, "Select sandbox type (full,stores)" },
+    { "guardsize",      'g',                "GUARDSIZE", 81920, "How large guard size is"},
     { 0 },
 };
 
@@ -50,6 +51,9 @@ parse_opt(int key, char *arg, struct argp_state *state)
     switch (key) {
     case 'l':
         
+    case 'g':
+        opts.guardsize = atoi(arg);
+        break;
     case 'h':
         argp_state_help(state, state->out_stream, ARGP_HELP_STD_HELP);
         break;
@@ -153,6 +157,7 @@ verify(struct LFIVerifier *v, const char *filename)
     size_t total = 0;
 
     long long unsigned t1 = time_ns();
+
     for (int i = 0; i < ehdr.e_phnum; ++i) {
         if (fseek(file, ehdr.e_phoff + i * sizeof(Elf64_Phdr), SEEK_SET) != 0) {
             fprintf(stderr, "seek failed: %s\n", strerror(errno));
@@ -194,6 +199,7 @@ verify(struct LFIVerifier *v, const char *filename)
             free(segment);
         }
     }
+
     long long unsigned elapsed = time_ns() - t1;
 
     fclose(file);
@@ -216,6 +222,7 @@ showerr(char *msg, size_t sz)
 int
 main(int argc, char **argv)
 {
+    opts.guardsize = 81920;
     argp_parse(&argp, argc, argv, ARGP_NO_HELP, 0, &args);
 
     if (args.n == 0)

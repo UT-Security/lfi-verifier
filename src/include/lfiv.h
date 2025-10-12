@@ -13,6 +13,9 @@ struct LFIVOptions {
     // Sandbox type (full, stores-only).
     enum LFIBoxType box;
 
+    // Guard size (only used for variable-length sandbox)
+    int32_t guardsize;
+
     // Callback to print a null-terminated error message if verification fails.
     void (*err)(char *msg, size_t size);
 };
