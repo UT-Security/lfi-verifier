@@ -11,10 +11,11 @@ mov %rdi, %rdi
 mov %rdi, %rdi
 mov %rdi, %rdi
 ---
-jmp foo
-nop
-foo:
-nop
+pext %r15, %rbp, %rdi
+bad:
+lea (%r14, %rdi), %rdi
+mov %bh, -0x4e(%rdi)
+jmp bad
 ---
 jmpq *%rax
 ---

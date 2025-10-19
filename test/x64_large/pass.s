@@ -137,3 +137,13 @@ movq %rax, (%r14, %r11)
 pext %r15, %rbp, %rdi
 lea (%r14, %rdi), %rdi
 mov %bh, -0x4e(%rdi)
+---
+mov %rax, %rdi
+jmp unaligned
+unaligned:
+mov %rsi, %rdi
+---
+mov %rax, %rdi
+unaligned:
+mov %rax, %rsi
+jmp unaligned

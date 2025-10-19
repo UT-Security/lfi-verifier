@@ -13,6 +13,7 @@ struct Verifier {
     bool failed;
     bool abort;
     uintptr_t addr;
+    uintptr_t base;
     struct LFIVOptions *opts;
     size_t bundlesize;
 };
@@ -184,13 +185,59 @@ static void chkmod(struct Verifier *v, FdInstr *instr) {
     }
 }
 
-static void chkbranch(struct Verifier *v, FdInstr *instr) {
+static size_t vchkbundle(struct Verifier *v, uint8_t* buf, size_t size);
+
+static bool branchto(struct Verifier *v, int64_t target, FdInstr* insn) {
+    int64_t i_target;
+    bool indirect, cond;
+    if(branchinfo(v, insn, &i_target, &indirect, &cond)) {
+        if(!indirect && (i_target == target))
+            return true;
+    }
+    return false;
+}
+
+static void chkunaligned(struct Verifier *v, int64_t target, uint8_t* buf, size_t size) {
+    /*
+     * We continuously call vchkbundle on the next instruction until we
+     * reach an address that is bundle-aligned
+     */
+    uint8_t* target_insns = buf - (v->addr - v->base) + (target - v->base) ;
+    uint32_t bundlesize = v->bundlesize;
+    int64_t count = 0;
+    int64_t realsize = 0;
+    if(target > v->addr) {
+        realsize = size - abs(target - (int64_t)v->addr);
+    } else {
+        realsize = size + abs(target - (int64_t)v->addr);
+    }
+    FdInstr cur;
+    uint64_t old = v->addr;
+    v->addr = target;
+    while (v->addr % bundlesize != 0 && count < realsize) {
+        int len = fd_decode(&target_insns[count], realsize-count, 64, 0, &cur);
+        if(len < 0) {
+            verrmin(v, "%lx: unknown instruction", v->addr);
+        }
+        if(!branchto(v, target, &cur)) {
+            vchkbundle(v, &target_insns[count], len);
+        } else {
+            v->addr += len;
+        }
+        count += len;
+    }
+    v->addr = old;
+}
+
+static void chkbranch(struct Verifier *v, FdInstr *instr, uint8_t* buf, size_t size) {
     int64_t target;
     bool indirect, cond;
     bool branch = branchinfo(v, instr, &target, &indirect, &cond);
     if (branch && !indirect) {
-        if (target % v->bundlesize != 0)
-            verr(v, instr, "jump target is not bundle-aligned");
+        if (target % v->bundlesize != 0) {
+            chkunaligned(v, target, buf, size);
+            //verr(v, instr, "jump target is not bundle-aligned");
+        }
     } else if (branch && indirect) {
         verr(v, instr, "invalid indirect branch");
     }
@@ -217,7 +264,7 @@ static size_t vchkbundle(struct Verifier *v, uint8_t* buf, size_t size) {
             if (!okmnem(v, &instr))
                 verr(v, &instr, "illegal instruction");
 
-            chkbranch(v, &instr);
+            chkbranch(v, &instr, &buf[count], size - count);
             chkmem(v, &instr);
             chkmod(v, &instr);
         }
@@ -273,6 +320,7 @@ bool lfiv_verify_x64_large(char *code, size_t size, uintptr_t addr, struct LFIVO
     */
 
     v.addr = addr;
+    v.base = addr;
 
     size_t count = 0;
     size_t ninstr = 0;
