@@ -298,8 +298,8 @@ static struct MacroInst macroinst_store_pext(struct Verifier *v, uint8_t *buf, s
     // note: for  SIB, the actual address will be moved
     // into r11 beforehand
     // this will not work if we cannot reserve r11
-    // pext %r15, %rX, %r11
-    // mov %rX, (%r14, %r11)
+    // pext %r15, %rX, %rY
+    // mov %rX, (%r14, %rY)
 
     FdInstr i_store, i_pext;
     int32_t  guardsize = v->opts->guardsize;

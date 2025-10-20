@@ -147,3 +147,6 @@ mov %rax, %rdi
 unaligned:
 mov %rax, %rsi
 jmp unaligned
+---
+pext %r15, %rdx, %r11
+lock cmpxchgb %cl, (%r14, %r11)
