@@ -45,6 +45,9 @@ if 'x64' in arch
     'src/x64/verify.c',
     'src/x64/bdd.c',
     'src/x64/bddinc.S',
+    'src/x64_large/verify.c',
+    'src/x64_large/bdd.c',
+    'src/x64_large/bddinc.S',
   )
   c_defines += '-DARCH_X64'
 endif
