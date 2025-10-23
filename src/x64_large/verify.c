@@ -201,42 +201,116 @@ static bool branchto(struct Verifier *v, int64_t target, FdInstr* insn) {
 
 static void vchkins(struct Verifier *v, uint8_t* buf, size_t size, struct MacroInst* mi);
 
-static void chkunaligned(struct Verifier *v, int64_t target, uint8_t* buf, size_t size) {
-    /*
-     * We continuously call vchkbundle on the next instruction until we
-     * reach an address that is bundle-aligned
-     */
-    uint8_t* target_insns = buf - (v->addr - v->base) + (target - v->base) ;
-    uint32_t bundlesize = v->bundlesize;
-    int64_t count = 0;
-    int64_t realsize = 0;
+struct VerifierWork {
+    uint8_t* cur;
+    uint64_t start;
+    uint64_t cur_addr;
+    size_t sz;
+    size_t remaining;
+    struct VerifierWork* next;
+};
+
+static bool alreadyChecked(struct Verifier *v, struct VerifierWork* cur, 
+    FdInstr* ins, uint64_t* target) {
+    bool indirect, cond;
+    if(branchinfo(v, ins, target, &indirect, &cond) && !indirect) {
+        if(*target % v->bundlesize == 0) {
+            return true;
+        }
+        while(cur != nullptr) {
+            if(cur->start == *target) {
+                return true;
+            }
+            cur = cur->next;
+        }
+        return false;
+    }
+    *target = 0;
+    return false;
+}
+
+struct VerifierWork* make_work(struct Verifier *v, int64_t target, uint8_t* buf, size_t size) {
+    struct VerifierWork* vw = malloc(sizeof(*vw));
+    vw->start = target;
+    vw->cur_addr = target;
+    size_t realsize;
     if(target > v->addr) {
         realsize = size - abs(target - (int64_t)v->addr);
     } else {
         realsize = size + abs(target - (int64_t)v->addr);
     }
-    FdInstr cur;
-    uint64_t old = v->addr;
-    v->addr = target;
+    //stop whenever this happens first:
+    //- we reach a bundle-aligned address
+    //- we go back to our starting address
+    //- we run out of instructions/end of file
+    size_t ins_to_verify = realsize;
+    size_t from_bundle = v->bundlesize - (target % v->bundlesize);
+    size_t from_start = v->addr > target ? v->addr - target : v->bundlesize;
+    if(ins_to_verify > from_bundle) ins_to_verify = from_bundle;
+    if(ins_to_verify > from_start) ins_to_verify = from_start;
+    vw->sz = ins_to_verify;
+    vw->cur = buf - (v->addr - v->base) + (target - v->base);
+    vw->remaining = realsize;
+    vw->next = nullptr;
+    return vw;
+}
+
+struct VerifierWork* process_work(struct Verifier *v, struct VerifierWork* vw) {
+    size_t count = 0;
+    size_t size = vw->sz;
+    uint8_t* buf = vw->cur;
+    uint64_t next_target = 0;
     struct MacroInst mi;
-    while (v->addr % bundlesize != 0 && count < realsize) {
-        int len = fd_decode(&target_insns[count], realsize-count, 64, 0, &cur);
+    FdInstr cur;
+    //we need to set v->addr here or branch calculations will be misaligned
+    uint64_t old_addr = v->addr;
+    v->addr = vw->cur_addr;
+    while(count < size) {
+        int len = fd_decode(&buf[count], size-count, 64, 0, &cur);
         if(len < 0) {
             verrmin(v, "%lx: unknown instruction", v->addr);
         }
-        //ugly hack so that we can properly account for size increase of macroinstructions
-        intptr_t start_addr = v->addr;
-        if(!branchto(v, target, &cur)) {
-            vchkins(v, &target_insns[count], realsize - count, &mi);
-        } else {
+        if(alreadyChecked(v, vw, &cur, &next_target)) {
             mi.size = len;
-            mi.ninstr = 1;
-            v->addr += len;
+        } else {
+            if(next_target) {
+                //add new work to the verifier, and return
+                struct VerifierWork* ret = 
+                    make_work(v, next_target, &buf[count], vw->remaining);
+                vw->cur = buf + count + len;
+                vw->sz -= (count + len);
+                vw->remaining -= (count + len);
+                vw->cur_addr = v->addr + len;
+                v->addr = old_addr;
+                return ret;
+            } else {
+                vchkins(v, &buf[count], size - count, &mi);
+            }
         }
         v->addr += mi.size;
         count += mi.size;
     }
-    v->addr = old;
+    v->addr = old_addr;
+    return nullptr;
+}
+
+static void chkunaligned(struct Verifier *v, int64_t target, uint8_t* buf, size_t size) {
+    /*
+     * We continuously call vchkbundle on the next instruction until we
+     * reach an address that is bundle-aligned
+     */
+    struct VerifierWork* head = make_work(v, target, buf, size);
+    while(head != nullptr) {
+        struct VerifierWork* temp = process_work(v, head);
+        if(temp) {
+            temp->next = head;
+            head = temp;
+        } else {
+            struct VerifierWork* old = head;
+            head = head->next;
+            free(old);
+        }
+    }
 }
 
 static void chkbranch(struct Verifier *v, FdInstr *instr, uint8_t* buf, size_t size) {
@@ -246,7 +320,7 @@ static void chkbranch(struct Verifier *v, FdInstr *instr, uint8_t* buf, size_t s
     if (branch && !indirect) {
         if (target % v->bundlesize != 0) {
             chkunaligned(v, target, buf, size);
-            //verr(v, instr, "jump target is not bundle-aligned");
+            //verrmin(v, "%lx : unaligned branch", v->addr);
         }
     } else if (branch && indirect) {
         verr(v, instr, "invalid indirect branch");
