@@ -935,7 +935,7 @@ case FDI_JZ:
 // case FDI_KXORW:
 // case FDI_LAHF:
 // case FDI_LAR:
-// case FDI_LDMXCSR:
+case FDI_LDMXCSR:
 // case FDI_LDS:
 // case FDI_LDTILECFG:
 case FDI_LEA:
