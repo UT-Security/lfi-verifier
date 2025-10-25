@@ -232,10 +232,10 @@ static struct MacroInst macroinst_call(struct Verifier *v, uint8_t *buf, size_t 
     size_t bundlesize = 32;
 
     // TODO: this relies on a movsq instruction outside of the bundle
-    // andq %r15, %r11
-    // andq $0xffffffffffffffe0, %r11
-    // orq %r14, %r11
-    // callq *%r11
+    // andq %r15, %rX
+    // andq $0xffffffffffffffe0, %rX
+    // orq %r14, %rX
+    // callq *%rX
 
     FdInstr i_and, i_and2, i_or, i_jmp;
     size_t offset = 0;
@@ -256,8 +256,7 @@ static struct MacroInst macroinst_call(struct Verifier *v, uint8_t *buf, size_t 
     if (FD_TYPE(&i_and) != FDI_AND ||
             !assert_reg(&i_and, 1, FD_REG_R15, 8) ||
             FD_OP_TYPE(&i_and, 0) != FD_OT_REG ||
-            // reserved(&i_and, 0) ||
-            !assert_reg(&i_and, 0, FD_REG_R11, 8) ||
+            reserved(&i_and, 0) ||
             FD_OP_SIZE(&i_and, 0) != 8)
         return (struct MacroInst){-1, 0};
 
@@ -285,10 +284,10 @@ static struct MacroInst macroinst_call(struct Verifier *v, uint8_t *buf, size_t 
     return (struct MacroInst){offset, 4};
 }
 
-bool check_unsafe_store(FdInstr* inst, uint32_t op, int32_t guard) {
+bool check_unsafe_store(FdInstr* inst, uint32_t op, uint32_t reg, int32_t guard) {
     return
         FD_OP_BASE(inst, op) != FD_REG_R14 ||
-        FD_OP_INDEX(inst, op) != FD_REG_R11 ||
+        FD_OP_INDEX(inst, op) != reg ||
         FD_OP_SCALE(inst, op) != 0 ||
         FD_OP_DISP(inst, op) > guard ||
         FD_OP_DISP(inst, op) < -guard;
@@ -313,21 +312,23 @@ static struct MacroInst macroinst_store_pext(struct Verifier *v, uint8_t *buf, s
             FD_OP_TYPE(&i_pext, 1) != FD_OT_REG ||
             FD_OP_TYPE(&i_pext, 2) != FD_OT_REG ||
             FD_OP_REG(&i_pext, 2) != FD_REG_R15 ||
-            FD_OP_REG(&i_pext, 0) != FD_REG_R11
+            reserved(&i_pext, 0)
         )
         return (struct MacroInst){-1, 0};
+
+    uint32_t targ = FD_OP_REG(&i_pext, 0);
 
     if(FD_TYPE(&i_store) == FDI_XCHG ||
         FD_TYPE(&i_store) == FDI_CMPXCHG) {
         if((FD_OP_TYPE(&i_store, 0) == FD_OT_MEM &&
-            check_unsafe_store(&i_store, 0, guardsize)) ||
+            check_unsafe_store(&i_store, 0, targ ,guardsize)) ||
             (FD_OP_TYPE(&i_store, 1) == FD_OT_MEM &&
-                check_unsafe_store(&i_store, 1, guardsize))
+                check_unsafe_store(&i_store, 1, targ, guardsize))
            )
             return (struct MacroInst){-1, 0};
     } else {
         if (FD_OP_TYPE(&i_store, 0) != FD_OT_MEM ||
-            check_unsafe_store(&i_store, 0, guardsize))
+            check_unsafe_store(&i_store, 0, targ, guardsize))
             return (struct MacroInst){-1, 0};
     }
 
@@ -381,66 +382,6 @@ static struct MacroInst macroinst_store_pext_multi(struct Verifier *v, uint8_t *
     return (struct MacroInst){offset, 3};
 }
 
-static struct MacroInst macroinst_store_and(struct Verifier *v, uint8_t *buf, size_t size) {
-    // stores can follow an alternate pattern:
-    // movq %rX, %r11
-    // andq %r15, %r11
-    // mov <anything> (%r14, %r11)
-    // The rewriter likes to do this for
-    // addq/andq/xorq/etc. (grrr cisc)
-
-    bool storesonly = v->opts->box == LFI_BOX_STORES;
-    int32_t guardsize = v->opts->guardsize;
-    FdInstr i_mov, i_and, i_store;
-    size_t offset = 0;
-    /*
-    if (fd_decode(&buf[offset], size, 64, 0, &i_mov) < 0)
-        return (struct MacroInst){-1, 0};
-    offset += i_mov.size;
-    */
-    if (fd_decode(&buf[offset], size - offset, 64, 0, &i_and) < 0)
-        return (struct MacroInst){-1, 0};
-    offset += i_and.size;
-    if (fd_decode(&buf[offset], size - offset, 64, 0, &i_store) < 0) {
-        return (struct MacroInst){-1, 0};
-    }
-    offset += i_store.size;
-
-    //this should be safe, since we still check for AND mask
-    if ((FD_TYPE(&i_mov) != FDI_MOV && 
-            FD_TYPE(&i_mov) != FDI_LEA) ||
-            FD_OP_TYPE(&i_mov, 0) != FD_OT_REG ||
-            (!storesonly && FD_OP_TYPE(&i_mov, 1) != FD_OT_REG) ||
-            FD_OP_REG(&i_mov, 0) != FD_REG_R11)
-        return (struct MacroInst){-1, 0};
-
-    if (FD_TYPE(&i_and) != FDI_AND ||
-            FD_OP_TYPE(&i_and, 0) != FD_OT_REG ||
-            FD_OP_TYPE(&i_and, 1) != FD_OT_REG ||
-            FD_OP_REG(&i_and, 0) != FD_REG_R11 ||
-            FD_OP_REG(&i_and, 1) != FD_REG_R15)
-        return (struct MacroInst){-1, 0};
-    //we actually don't really care if the 
-    //store instruction is a mov. We just care
-    //that it only writes to the memory address specified
-    //in operand 0
-    if(FD_TYPE(&i_store) == FDI_XCHG ||
-        FD_TYPE(&i_store) == FDI_CMPXCHG) {
-        if((FD_OP_TYPE(&i_store, 0) == FD_OT_MEM &&
-            check_unsafe_store(&i_store, 0, guardsize)) ||
-            (FD_OP_TYPE(&i_store, 1) == FD_OT_MEM &&
-                check_unsafe_store(&i_store, 1, guardsize))
-           )
-            return (struct MacroInst){-1, 0};
-    } else {
-        if (FD_OP_TYPE(&i_store, 0) != FD_OT_MEM ||
-            check_unsafe_store(&i_store, 0, guardsize))
-            return (struct MacroInst){-1, 0};
-    }
-
-    return (struct MacroInst){offset, 3};
-}
-
 static struct MacroInst macroinst_store_two(struct Verifier *v, uint8_t *buf, size_t size) {
     //stores sometimes also follow this pattern:
     // andq %r15, %r11
@@ -461,9 +402,11 @@ static struct MacroInst macroinst_store_two(struct Verifier *v, uint8_t *buf, si
     if (FD_TYPE(&i_and) != FDI_AND ||
             FD_OP_TYPE(&i_and, 0) != FD_OT_REG ||
             FD_OP_TYPE(&i_and, 1) != FD_OT_REG ||
-            FD_OP_REG(&i_and, 0) != FD_REG_R11 ||
+            reserved(&i_and, 0) || 
             FD_OP_REG(&i_and, 1) != FD_REG_R15)
         return (struct MacroInst){-1, 0};
+
+    uint32_t targ = FD_OP_REG(&i_and, 0);
     //we actually don't really care if the 
     //store instruction is a mov. We just care
     //that it only writes to the memory address specified
@@ -471,14 +414,14 @@ static struct MacroInst macroinst_store_two(struct Verifier *v, uint8_t *buf, si
     if(FD_TYPE(&i_store) == FDI_XCHG ||
         FD_TYPE(&i_store) == FDI_CMPXCHG) {
         if((FD_OP_TYPE(&i_store, 0) == FD_OT_MEM &&
-            check_unsafe_store(&i_store, 0, guardsize)) ||
+            check_unsafe_store(&i_store, 0, targ, guardsize)) ||
             (FD_OP_TYPE(&i_store, 1) == FD_OT_MEM &&
-                check_unsafe_store(&i_store, 1, guardsize))
+                check_unsafe_store(&i_store, 1, targ, guardsize))
            )
             return (struct MacroInst){-1, 0};
     } else {
         if (FD_OP_TYPE(&i_store, 0) != FD_OT_MEM ||
-            check_unsafe_store(&i_store, 0, guardsize))
+            check_unsafe_store(&i_store, 0, targ, guardsize))
             return (struct MacroInst){-1, 0};
     }
 
@@ -504,7 +447,7 @@ static struct MacroInst macroinst_load(struct Verifier *v, uint8_t *buf, size_t 
             FD_OP_TYPE(&i_pext, 1) != FD_OT_REG ||
             FD_OP_TYPE(&i_pext, 2) != FD_OT_REG ||
             FD_OP_REG(&i_pext, 2) != FD_REG_R15 ||
-            FD_OP_REG(&i_pext, 0) != FD_REG_R11
+            reserved(&i_pext, 0)
         )
         return (struct MacroInst){-1, 0};
 
