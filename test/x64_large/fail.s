@@ -118,3 +118,42 @@ cmpxchg %r15, %rdi
 stosq
 ---
 movsq
+---
+pext %r15, %rdi, %rdi
+middle:
+nop
+nop
+nop
+nop
+nop
+nop
+nop
+nop
+nop
+nop
+nop
+nop
+nop
+nop
+nop
+nop
+nop
+nop
+nop
+nop
+nop
+nop
+nop
+nop
+nop
+nop
+nop
+nop
+nop
+movq %rax, (%r14, %rdi)
+jmp middle
+---
+pext %r15, %r14, %r14
+mov %rdi, (%r14, %r14)
+---
+lock xchg (%rdi), %rsi

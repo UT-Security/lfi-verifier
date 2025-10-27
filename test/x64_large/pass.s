@@ -55,12 +55,12 @@ orq %r14, %rsp
 cmp %rsp, %rsp
 ---
 .bundle_align_mode 5
-movq %rax, %r11
+movq %rax, %rdi
 .bundle_lock
-andq %r15, %r11
-andq $0xffffffffffffffe0, %r11
-orq %r14, %r11
-callq *%r11
+andq %r15, %rdi
+andq $0xffffffffffffffe0, %rdi
+orq %r14, %rdi
+callq *%rdi
 .bundle_unlock
 ---
 leaq 1f(%rip), %r11
@@ -97,8 +97,8 @@ pext %r15, %rdi, %r11
 mov %rax, (%r14, %r11)
 .bundle_unlock
 ---
-pext %r15, %rdi, %r11
-mov %rax, 32(%r14, %r11)
+pext %r15, %rdi, %rsi
+mov %rax, 32(%r14, %rsi)
 ---
 1:
 .bundle_align_mode 4
@@ -121,18 +121,18 @@ movsq
 // flags: --sandbox=stores
 mov (%rdi), %rax
 ---
-movq %rdi, %r11
-andq %r15, %r11
-movq $0x0, (%r14, %r11)
+movq %rdi, %rbx
+andq %r15, %rbx
+movq $0x0, (%r14, %rbx)
 ---
 // flags: --sandbox=stores
-leaq (%r9, %rdi), %r11
-andq %r15, %r11
-add %rdi, (%r14, %r11)
+leaq (%r9, %rdi), %r9
+andq %r15, %r9
+add %rdi, (%r14, %r9)
 ---
 nopq (%rax, %rax)
-andq %r15, %r11
-movq %rax, (%r14, %r11)
+andq %r15, %r12
+movq %rax, (%r14, %r12)
 ---
 pext %r15, %rbp, %rdi
 lea (%r14, %rdi), %rdi
@@ -148,5 +148,5 @@ unaligned:
 mov %rax, %rsi
 jmp unaligned
 ---
-pext %r15, %rdx, %r11
-lock cmpxchgb %cl, (%r14, %r11)
+pext %r15, %rdx, %rbp
+lock cmpxchgb %cl, (%r14, %rbp)
