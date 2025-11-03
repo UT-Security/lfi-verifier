@@ -1626,7 +1626,7 @@ case FDI_UD2:
  case FDI_VMOVD:
 // case FDI_VMOVDDUP:
  case FDI_VMOVDQA:
-// case FDI_VMOVDQU:
+ case FDI_VMOVDQU:
 // case FDI_VMOVHLPS:
 // case FDI_VMOVHPD:
 // case FDI_VMOVHPS:
@@ -1685,7 +1685,7 @@ case FDI_UD2:
 // case FDI_VPBLENDD:
 // case FDI_VPBLENDVB:
 // case FDI_VPBLENDW:
-// case FDI_VPBROADCASTB:
+ case FDI_VPBROADCASTB:
 // case FDI_VPBROADCASTD:
  case FDI_VPBROADCASTQ:
 // case FDI_VPBROADCASTW:
@@ -1847,7 +1847,7 @@ case FDI_UD2:
 // case FDI_VUNPCKLPD:
 // case FDI_VUNPCKLPS:
 // case FDI_VXORPD:
-// case FDI_VXORPS:
+ case FDI_VXORPS:
 // case FDI_VZEROALL:
  case FDI_VZEROUPPER:
 // case FDI_WBINVD:

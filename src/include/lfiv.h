@@ -14,7 +14,7 @@ struct LFIVOptions {
     enum LFIBoxType box;
 
     // Guard size (only used for variable-length sandbox)
-    int32_t guardsize;
+    int64_t guardsize;
 
     // Callback to print a null-terminated error message if verification fails.
     void (*err)(char *msg, size_t size);
@@ -27,6 +27,8 @@ struct LFIVerifier {
     // Verify the given code buffer, assuming a start address of vaddr.
     bool (*verify)(char *code, size_t size, uintptr_t vaddr, struct LFIVOptions *opts);
 };
+
+typedef struct LFIVerifier LFIVerifier;
 
 // Run the arm64 verifier.
 bool
