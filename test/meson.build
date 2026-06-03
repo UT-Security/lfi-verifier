@@ -2,6 +2,8 @@ tests_arm64 = [
   'arm64/pass.s',
   'arm64/pass_msr.s',
   'arm64/fail.s',
+  'arm64/large_pass.s',
+  'arm64/large_fail.s',
 ]
 
 tests_x64 = [

@@ -187,6 +187,8 @@ static void usage(const char *prog)
             "  -s, --sandbox=TYPE      select sandbox type (full,stores)\n"
             "      --no-bdd            disable the BDD filter (x86-64)\n"
             "      --ctxreg            enable context register (x25 on arm64, r15 on x64)\n"
+            "      --large             enable the large sandbox scheme (arm64)\n"
+            "      --p2size=N          log2 of large sandbox size, in [32,63] (default 32)\n"
             , prog);
     exit(1);
 }
@@ -203,6 +205,8 @@ main(int argc, char **argv)
         {"sandbox", required_argument, 0, 's'},
         {"no-bdd", no_argument, 0, 0},
         {"ctxreg", no_argument, 0, 0},
+        {"large", no_argument, 0, 0},
+        {"p2size", required_argument, 0, 0},
         {0, 0, 0, 0}
     };
 
@@ -238,8 +242,31 @@ main(int argc, char **argv)
                 opts.no_bdd = true;
             } else if (strcmp(long_options[long_index].name, "ctxreg") == 0) {
                 opts.ctxreg = true;
+            } else if (strcmp(long_options[long_index].name, "large") == 0) {
+                opts.large = true;
+            } else if (strcmp(long_options[long_index].name, "p2size") == 0) {
+                char *end;
+                unsigned long v = strtoul(optarg, &end, 10);
+                if (end == optarg || *end != '\0') {
+                    fprintf(stderr, "invalid p2size: %s\n", optarg);
+                    return 1;
+                }
+                opts.p2size = (unsigned) v;
             }
             break;
+        }
+    }
+
+    if (opts.p2size != 0 && !opts.large) {
+        fprintf(stderr, "--p2size requires --large\n");
+        return 1;
+    }
+    if (opts.large) {
+        if (opts.p2size == 0)
+            opts.p2size = 32; // default to 4 GiB
+        else if (opts.p2size < 32 || opts.p2size > 63) {
+            fprintf(stderr, "--p2size must be in [32, 63]\n");
+            return 1;
         }
     }
 

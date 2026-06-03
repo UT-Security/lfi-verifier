@@ -19,6 +19,7 @@ struct Verifier {
     uintptr_t addr;
     struct LFIVOptions *opts;
     bool x30_guarded;
+    uint64_t mask; // large sandbox offset mask: 2^p2size - 1
 };
 
 enum {
@@ -80,6 +81,7 @@ enum {
     REG_BASE    = 27,
     REG_RET     = 30,
     REG_CTX     = 25,
+    REG_OFFSET  = 24, // large sandbox offset register
 };
 
 enum {
@@ -124,6 +126,15 @@ static bool ctxreg(struct Verifier *v, uint8_t reg) {
     return v->opts->ctxreg && reg == REG_CTX;
 }
 
+/*@ requires \valid_read(v);
+    requires \valid_read(v->opts);
+    assigns \nothing;
+*/
+// The offset register (x24) is reserved only in the large sandbox scheme.
+static bool offreg(struct Verifier *v, uint8_t reg) {
+    return v->opts->large && reg == REG_OFFSET;
+}
+
 /*@ requires \valid_read(dinst);
     assigns \nothing;
 */
@@ -138,6 +149,61 @@ static bool is_x30_guard(struct Da64Inst *dinst) {
            dinst->ops[2].reggpext.ext == DA_EXT_UXTW &&
            dinst->ops[2].reggpext.sf == 0 &&
            dinst->ops[2].reggpext.shift == 0;
+}
+
+/*@ requires \valid_read(v);
+    requires \valid_read(v->opts);
+    requires \valid_read(dinst);
+    assigns \nothing;
+*/
+// Large sandbox: check if instruction loads the offset register with a
+// correctly masked value: and x24, xN, #(2^p2size - 1). This is the only way
+// x24 may be written, which is what keeps it an always-valid offset.
+static bool is_offset_load(struct Verifier *v, struct Da64Inst *dinst) {
+    if (!v->opts->large)
+        return false;
+    if (dinst->mnem != DA64I_AND_IMM)
+        return false;
+    // 64-bit `and` writing exactly x24.
+    if (dinst->ops[0].reg != REG_OFFSET || dinst->ops[0].reggp.sf != 1)
+        return false;
+    // The mask must be a large immediate equal to 2^p2size - 1.
+    if (dinst->ops[2].type != DA_OP_IMMLARGE)
+        return false;
+    return dinst->imm64 == v->mask;
+}
+
+/*@ requires \valid_read(v);
+    requires \valid_read(v->opts);
+    requires \valid_read(dinst);
+    assigns \nothing;
+*/
+// Large sandbox: check if instruction is the offset-register guard
+// add {x28,x30}, x27, x24  (shifted-register form, lsl #0), or
+// add sp, x27, x24         (extended-register form, uxtx #0).
+// The destination register is validated by the caller; this only checks that
+// the sources are the base (x27) and the offset register (x24), and that no
+// scaling is applied. Both forms compute base + x24, which is always in the
+// sandbox because x24 is an invariantly valid offset.
+static bool is_offset_guard(struct Verifier *v, struct Da64Inst *dinst) {
+    if (!v->opts->large)
+        return false;
+    if (dinst->mnem != DA64I_ADD_SHIFT && dinst->mnem != DA64I_ADD_EXT)
+        return false;
+    if (dinst->ops[0].reggp.sf != 1)
+        return false;
+    if (!basereg(dinst->ops[1].reg) || dinst->ops[1].reggp.sf != 1)
+        return false;
+    if (dinst->ops[2].type != DA_OP_REGGPEXT)
+        return false;
+    if (dinst->ops[2].reg != REG_OFFSET || dinst->ops[2].reggpext.sf != 1 ||
+            dinst->ops[2].reggpext.shift != 0)
+        return false;
+    // add {x28,x30}, x27, x24, lsl #0
+    if (dinst->mnem == DA64I_ADD_SHIFT)
+        return dinst->ops[2].reggpext.ext == DA_EXT_LSL;
+    // add sp, x27, x24, uxtx #0
+    return dinst->ops[2].reggpext.ext == DA_EXT_UXTX;
 }
 
 /*@ requires \valid_read(dinst);
@@ -417,7 +483,16 @@ static bool okmemop(struct Verifier *v, struct Da64Op *op, bool load) {
     case DA_OP_MEMREG:
         if (load && storesonly)
             return true;
-        return basereg(op->reg) && op->memreg.ext == DA_EXT_UXTW && op->memreg.sc == 0;
+        // Standard 4 GiB form: [x27, wN, uxtw].
+        if (basereg(op->reg) && op->memreg.ext == DA_EXT_UXTW && op->memreg.sc == 0)
+            return true;
+        // Large sandbox form: [x27, x24] (register-register X form, no scale).
+        // Only the offset register is permitted as the index, since uxtx does
+        // not truncate and x24 is the only invariantly valid offset.
+        if (v->opts->large && basereg(op->reg) && op->memreg.offreg == REG_OFFSET &&
+                op->memreg.ext == DA_EXT_UXTX && op->memreg.sc == 0)
+            return true;
+        return false;
     case DA_OP_MEMREGPOST:
         return false;
     case DA_OP_MEMINC:
@@ -480,6 +555,12 @@ static bool okmod(struct Verifier *v, struct Da64Inst *dinst, struct Da64Op *op)
 
     if (fixedreg(v, op->reg))
         return false;
+
+    // Large sandbox: the offset register (x24) may only be written by
+    // 'and x24, xN, #mask' with the correct mask.
+    if (offreg(v, op->reg))
+        return is_offset_load(v, dinst);
+
     if (!addrreg(v, op->reg, op->type == DA_OP_REGSP))
         return true;
 
@@ -487,6 +568,11 @@ static bool okmod(struct Verifier *v, struct Da64Inst *dinst, struct Da64Op *op)
     if (retreg(op->reg)) {
         // x30 guard instruction: add x30, x27, w30, uxtw
         if (is_x30_guard(dinst)) {
+            v->x30_guarded = true;
+            return true;
+        }
+        // Large sandbox x30 guard: add x30, x27, x24
+        if (is_offset_guard(v, dinst)) {
             v->x30_guarded = true;
             return true;
         }
@@ -509,13 +595,17 @@ static bool okmod(struct Verifier *v, struct Da64Inst *dinst, struct Da64Op *op)
         return true;
     }
 
-    // Handle x28 modifications - only allow 'add x28, base, lo, uxtw'
+    // Handle x28/sp modifications - only allow 'add x28, base, lo, uxtw'
     if (dinst->mnem == DA64I_ADD_EXT) {
         if (addrreg(v, dinst->ops[0].reg, true) && dinst->ops[0].reggp.sf == 1 && basereg(dinst->ops[1].reg) &&
                 dinst->ops[2].reggpext.ext == DA_EXT_UXTW &&
                 dinst->ops[2].reggpext.sf == 0 && dinst->ops[2].reggpext.shift == 0)
             return true;
     }
+
+    // Large sandbox x28/sp guard: add x28, x27, x24 / add sp, x27, x24
+    if (is_offset_guard(v, dinst))
+        return true;
 
     return false;
 }
@@ -635,6 +725,17 @@ bool lfiv_verify_arm64(char *code, size_t size, uintptr_t addr, struct LFIVOptio
         .opts = opts,
         .x30_guarded = true,
     };
+
+    if (opts->large) {
+        // The standard 4 GiB guards (uxtw) remain valid only when the sandbox
+        // is at least 4 GiB, so the large scheme requires p2size >= 32. The
+        // upper bound keeps the mask shift well-defined.
+        if (opts->p2size < 32 || opts->p2size > 63) {
+            verrmin(&v, "invalid large sandbox p2size: %u", opts->p2size);
+            return false;
+        }
+        v.mask = ((uint64_t) 1 << opts->p2size) - 1;
+    }
 
     /*@ loop invariant 0 <= i <= size / 4;
         loop invariant \valid_read(insns + (0 .. size / 4 - 1));

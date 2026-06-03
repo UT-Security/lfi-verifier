@@ -21,6 +21,19 @@ struct LFIVOptions {
     // and can only be used for 64-bit loads/stores from the address it holds.
     bool ctxreg;
 
+    // Enable the large sandbox scheme (arm64 only). When enabled, x24 is
+    // reserved as the offset register and the two-instruction guard sequence
+    //     and x24, xN, #((1 << p2size) - 1)
+    //     add x28, x27, x24
+    // is recognized in addition to the standard 4 GiB guards. See LFI-large.
+    bool large;
+
+    // Log2 of the sandbox size for the large sandbox scheme: the sandbox is
+    // 2^p2size bytes and the mask (2^p2size - 1) is the logical immediate that
+    // every `and x24, xN, #mask` must use. Must be in [32, 63] (i.e. at least
+    // 4 GiB). Only consulted when `large` is set.
+    unsigned p2size;
+
     // Callback to print a null-terminated error message if verification fails.
     void (*err)(char *msg, size_t size);
 };
