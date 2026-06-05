@@ -151,7 +151,7 @@ static struct MacroInst macroinst_jmp(struct Verifier *v, FdInstrBundle *bundle,
     if (FD_TYPE(i_and) != FDI_AND ||
             !assert_reg(i_and, 1, FD_REG_R15, 8) ||
             FD_OP_TYPE(i_and, 0) != FD_OT_REG ||
-            reserved(i_and, 0) ||
+            reserved( v, i_and, 0) ||
             FD_OP_SIZE(i_and, 0) != 8)
         return (struct MacroInst){-1, 0};
 
@@ -198,6 +198,21 @@ static bool okdisp(int64_t disp) {
     return (disp % 8 == 0) && (disp < 256);
 }
 
+static bool okrtcalldisp(int64_t disp) {
+    switch (disp) {
+    case 0:
+    case 8:
+    case 16:
+    case 24:
+    case -8:
+    case -16:
+    case -24:
+    case -32:
+        return true;
+    }
+    return false;
+}
+
 static struct MacroInst macroinst_rtcall(struct Verifier *v, FdInstrBundle *bundle, size_t idx) {
     // leaq 1f(%rip), %r11
     // jmpq *N(%r14)
@@ -222,7 +237,7 @@ static struct MacroInst macroinst_rtcall(struct Verifier *v, FdInstrBundle *bund
             FD_OP_BASE(&i_jmp, 0) != FD_REG_R14 ||
             FD_OP_INDEX(&i_jmp, 0) != FD_REG_NONE ||
             FD_OP_SCALE(&i_jmp, 0) != 0 ||
-            !okdisp(FD_OP_DISP(&i_jmp, 0)))
+            !okrtcalldisp(FD_OP_DISP(&i_jmp, 0)))
         return (struct MacroInst){-1, 0};
 
     // Return target can either be the next instruction or can be some
@@ -254,7 +269,7 @@ static struct MacroInst macroinst_call(struct Verifier *v, FdInstrBundle *bundle
     if (FD_TYPE(i_and) != FDI_AND ||
             !assert_reg(i_and, 1, FD_REG_R15, 8) ||
             FD_OP_TYPE(i_and, 0) != FD_OT_REG ||
-            reserved(i_and, 0) ||
+            reserved( v, i_and, 0) ||
             FD_OP_SIZE(i_and, 0) != 8)
         return (struct MacroInst){-1, 0};
 
@@ -368,7 +383,7 @@ static struct MacroInst macroinst_store_pext(struct Verifier *v, FdInstrBundle *
             FD_OP_TYPE(i_pext, 1) != FD_OT_REG ||
             FD_OP_TYPE(i_pext, 2) != FD_OT_REG ||
             FD_OP_REG(i_pext, 2) != FD_REG_R15 ||
-            reserved(i_pext, 0)
+            reserved( v, i_pext, 0)
         )
         return (struct MacroInst){-1, 0};
 
@@ -460,7 +475,7 @@ static struct MacroInst macroinst_store_three(struct Verifier *v, FdInstrBundle 
     if (FD_TYPE(i_and) != FDI_AND ||
             FD_OP_TYPE(i_and, 0) != FD_OT_REG ||
             FD_OP_TYPE(i_and, 1) != FD_OT_REG ||
-            reserved(i_and, 0) || 
+            reserved( v, i_and, 0) || 
             FD_OP_REG(i_and, 1) != FD_REG_R15)
         return (struct MacroInst){-1, 0};
 
@@ -518,7 +533,7 @@ static struct MacroInst macroinst_store_two(struct Verifier *v, FdInstrBundle *b
     if (FD_TYPE(i_and) != FDI_AND ||
             FD_OP_TYPE(i_and, 0) != FD_OT_REG ||
             FD_OP_TYPE(i_and, 1) != FD_OT_REG ||
-            reserved(i_and, 0) || 
+            reserved( v, i_and, 0) || 
             FD_OP_REG(i_and, 1) != FD_REG_R15)
         return (struct MacroInst){-1, 0};
 
@@ -564,7 +579,7 @@ static struct MacroInst macroinst_load(struct Verifier *v, FdInstrBundle *bundle
             FD_OP_TYPE(i_pext, 1) != FD_OT_REG ||
             FD_OP_TYPE(i_pext, 2) != FD_OT_REG ||
             FD_OP_REG(i_pext, 2) != FD_REG_R15 ||
-            reserved(i_pext, 0)
+            reserved( v, i_pext, 0)
         )
         return (struct MacroInst){-1, 0};
 
@@ -574,7 +589,7 @@ static struct MacroInst macroinst_load(struct Verifier *v, FdInstrBundle *bundle
 
     if (FD_TYPE(&i_load) != FDI_MOV ||
             FD_OP_TYPE(&i_load, 0) != FD_OT_REG ||
-            reserved(&i_load, 0) ||
+            reserved( v, &i_load, 0) ||
             FD_OP_TYPE(&i_load, 1) != FD_OT_MEM ||
             FD_OP_BASE(&i_load, 1) != FD_REG_R14 ||
             FD_OP_INDEX(&i_load, 1) != FD_OP_REG(i_pext, 0) ||
@@ -602,7 +617,7 @@ static struct MacroInst macroinst_load_two(struct Verifier *v, FdInstrBundle *bu
     if (FD_TYPE(i_and) != FDI_AND ||
             FD_OP_TYPE(i_and, 0) != FD_OT_REG ||
             FD_OP_TYPE(i_and, 1) != FD_OT_REG ||
-            reserved(i_and, 0) || 
+            reserved( v, i_and, 0) || 
             FD_OP_REG(i_and, 1) != FD_REG_R15)
         return (struct MacroInst){-1, 0};
 
@@ -636,7 +651,7 @@ static struct MacroInst macroinst_load_two(struct Verifier *v, FdInstrBundle *bu
 static struct MacroInst macroinst_modsp(struct Verifier *v, FdInstrBundle *bundle, size_t idx) {
     // mov/sub/add/and ..., %rsp
     // andq %r15, %rsp
-    // orq %r14, %rsp
+    // ~~orq %r14, %rsp~~
     //
     // there is also a special case for lea:
     // leaq (...), %rsp
@@ -699,13 +714,13 @@ static struct MacroInst macroinst_modsp(struct Verifier *v, FdInstrBundle *bundl
     if(FD_TYPE(&i_and) == FDI_AND &&
         assert_reg(&i_and, 0, FD_REG_SP, 8) &&
         assert_reg(&i_and, 1, FD_REG_R15, 8) &&
-        (FD_TYPE(&i_or) == FDI_OR || FD_TYPE(&i_or) == FDI_ADD) &&
+        (FD_TYPE(&i_or) == FDI_LEA /* || FD_TYPE(&i_or) == FDI_ADD */ ) &&
         assert_reg(&i_or, 0, FD_REG_SP, 8) &&
         assert_reg(&i_or, 1, FD_REG_R14, 8))
         return (struct MacroInst){count, 3};
 
-    if(FD_TYPE(i_mov) != FDI_LEA)
-        return (struct MacroInst){-1, 0};
+    // if(FD_TYPE(i_mov) != FDI_LEA)
+    //     return (struct MacroInst){-1, 0};
 
     if(FD_TYPE(&i_and) != FDI_PEXT ||
             !assert_reg(&i_and, 0, FD_REG_SP, 8) ||

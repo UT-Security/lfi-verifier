@@ -7,6 +7,10 @@
 #include "lfiv.h"
 #include "fadec.h"
 
+#ifndef CTXREG_TP_OFFSET
+#define CTXREG_TP_OFFSET 16
+#endif
+
 extern uint8_t lfi_x86_bdd(uint8_t *);
 
 struct Verifier {
@@ -66,7 +70,7 @@ static int nmod(FdInstr *instr) {
 // Check whether a particular register is reserved under the current
 // verification configuration.
 // Accounts for reads vs writes.
-static bool reserved(FdInstr *instr, int op_index) {
+static bool reserved(struct Verifier *v, FdInstr *instr, int op_index) {
     // Allow all vector registers.
     if (FD_OP_REG_TYPE(instr, op_index) == FD_RT_VEC)
         return false;
@@ -81,7 +85,7 @@ static bool reserved(FdInstr *instr, int op_index) {
     FdReg reg = FD_OP_REG(instr, op_index);
     bool is_read_op = nmod(instr) <= op_index;
 
-    if (reg == FD_REG_R14 || reg == FD_REG_SP || reg == FD_REG_R15 ) {
+    if (reg == FD_REG_R14 || reg == FD_REG_SP || reg == FD_REG_R15) {
         return !is_read_op;
     }
 
@@ -150,10 +154,10 @@ static void chkmem(struct Verifier *v, FdInstr *instr) {
             if (FD_SEGMENT(instr) == FD_REG_GS) {
                 if(storesonly && i != 0 && FD_TYPE(instr) != FDI_XCHG && FD_TYPE(instr) != FDI_CMPXCHG)
                     continue;
-                if (FD_OP_DISP(instr, i) != 0 ||
+                if (FD_OP_DISP(instr, i) != CTXREG_TP_OFFSET ||
                     FD_OP_BASE(instr, i) != FD_REG_NONE ||
                     FD_OP_INDEX(instr, i) != FD_REG_NONE)
-                    verr(v, instr, "Can only access base of segmented memory");
+                    verr(v, instr, "Can only access +0x10 of segmented memory");
                 continue;
             } else if (FD_SEGMENT(instr) == FD_REG_FS) {
                 verr(v, instr, "use of %%fs is not permitted");
@@ -173,10 +177,11 @@ static void chkmem(struct Verifier *v, FdInstr *instr) {
                  FD_TYPE(instr) == FDI_PUSH ||
                  FD_TYPE(instr) == FDI_LDMXCSR ||
                  FD_TYPE(instr) == FDI_DIV ||
+                 FD_TYPE(instr) == FDI_FLD ||
                  FD_TYPE(instr) == FDI_BT)
                 )
                 continue;
-            
+
             if (FD_OP_BASE(instr, i) == FD_REG_R14 &&
                 FD_OP_INDEX(instr, i) == FD_REG_NONE &&
                 FD_OP_SCALE(instr, i) == 0 &&
@@ -197,8 +202,9 @@ static void chkmod(struct Verifier *v, FdInstr *instr) {
 
     if(FD_TYPE(instr) == FDI_PUSH) return;
     for (size_t i = 0; i < 4; i++) {
-        if (FD_OP_TYPE(instr, i) == FD_OT_REG && reserved(instr, i))
+        if (FD_OP_TYPE(instr, i) == FD_OT_REG && reserved(v, instr, i)) {
             verr(v, instr, "modification of reserved register");
+        }
     }
 }
 
