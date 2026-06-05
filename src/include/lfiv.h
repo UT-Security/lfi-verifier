@@ -13,6 +13,9 @@ struct LFIVOptions {
     // Sandbox type (full, stores-only).
     enum LFIBoxType box;
 
+    // Guard size (only used for variable-length sandbox)
+    int64_t guardsize;
+
     // Disable BDD filter (x86-64).
     bool no_bdd;
 
@@ -44,6 +47,10 @@ lfiv_verify_x64(char *code, size_t size, uintptr_t addr, struct LFIVOptions *opt
 // Run the riscv64 verifier.
 bool
 lfiv_verify_riscv64(char *code, size_t size, uintptr_t addr, struct LFIVOptions *opts);
+
+// Run the x64 largesbx verifier.
+bool
+lfiv_verify_x64_large(char *code, size_t size, uintptr_t addr, struct LFIVOptions *opts);
 
 static inline bool
 lfiv_verify(struct LFIVerifier *v, char *code, size_t size, uintptr_t addr)
