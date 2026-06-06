@@ -714,7 +714,8 @@ static struct MacroInst macroinst_modsp(struct Verifier *v, FdInstrBundle *bundl
     if(FD_TYPE(&i_and) == FDI_AND &&
         assert_reg(&i_and, 0, FD_REG_SP, 8) &&
         assert_reg(&i_and, 1, FD_REG_R15, 8) &&
-        (FD_TYPE(&i_or) == FDI_LEA /* || FD_TYPE(&i_or) == FDI_ADD */ ) &&
+        (FD_TYPE(&i_or) == FDI_LEA || FD_TYPE(&i_or) == FDI_ADD
+         || FD_TYPE(&i_or) == FDI_OR) &&
         assert_reg(&i_or, 0, FD_REG_SP, 8) &&
         assert_reg(&i_or, 1, FD_REG_R14, 8))
         return (struct MacroInst){count, 3};
