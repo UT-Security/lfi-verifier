@@ -84,6 +84,9 @@ enum {
     REG_OFFSET  = 24, // large sandbox offset register
 };
 
+#define SYSREG(op0, op1, CRn, CRm, op2) \
+    ((op0 << 14) | (op1 << 11) | (CRn << 7) | (CRm << 3) | (op2))
+
 enum {
     SYS_tpidr_el0        = 0xde82,
     SYS_fpsr             = 0xda21,
@@ -94,6 +97,8 @@ enum {
     SYS_id_aa64zfr0_el1  = 0xc024, // requires SVE
     SYS_id_aa64isar0_el1 = 0xc030,
     SYS_id_aa64isar1_el1 = 0xc031,
+    SYS_id_aa64mmfr1_el1 = SYSREG(0b11,0b000,0b0000,0b0111,0b001),
+    SYS_ctr_el0          = SYSREG(0b11,0b011,0b0000,0b0000,0b001),
     // DC (data cache) operations (encoded with 01 prefix in bits 15:14)
     SYS_dc_zva           = 0x5ba1, // DC ZVA - zero cache line
 };
@@ -267,6 +272,8 @@ static bool sysreg(uint16_t sysreg) {
         sysreg == SYS_id_aa64pfr1_el1 ||
         sysreg == SYS_id_aa64zfr0_el1 ||
         sysreg == SYS_id_aa64isar0_el1 ||
+        sysreg == SYS_id_aa64mmfr1_el1 ||
+        sysreg == SYS_ctr_el0 ||
         sysreg == SYS_id_aa64isar1_el1;
 }
 
