@@ -136,7 +136,53 @@ static struct MacroInst macroinst_movs(struct Verifier *v, FdInstrBundle *bundle
     return (struct MacroInst){offset, icount};
 }
 
-static struct MacroInst macroinst_jmp(struct Verifier *v, FdInstrBundle *bundle, size_t idx) {
+static struct MacroInst macroinst_ret(struct Verifier *v, FdInstrBundle *bundle, size_t idx) {
+    FdInstr i_ret = bundle->instrs[idx];
+    if (FD_TYPE(&i_ret) == FDI_RET)
+        return (struct MacroInst){i_ret.size, 1};
+}
+
+static struct MacroInst macroinst_jmp_32bit(struct Verifier *v, FdInstrBundle *bundle, size_t idx) {
+    // andl $0xffffffe0, %eX
+    // addq %r14, %rX (or orq)
+    // jmpq *%rX
+
+    FdInstr i_and = bundle->instrs[idx];
+
+    if (FD_TYPE(&i_and) != FDI_AND ||
+            FD_OP_TYPE(&i_and, 0) != FD_OT_REG ||
+            reserved(v, &i_and, 0) ||
+            FD_OP_SIZE(&i_and, 0) != 4 ||
+            FD_OP_TYPE(&i_and, 1) != FD_OT_IMM ||
+            FD_OP_IMM(&i_and, 1) != 0xffffffffffffffe0)
+        return (struct MacroInst){-1, 0};
+
+    if (!bundle->valid[idx + 1])
+        return (struct MacroInst){-1, 0};
+    FdInstr i_add = bundle->instrs[idx + 1];
+
+    if (!(FD_TYPE(&i_add) != FDI_OR && FD_TYPE(&i_add) != FDI_ADD) ||
+            FD_OP_TYPE(&i_add, 0) != FD_OT_REG ||
+            FD_OP_TYPE(&i_add, 1) != FD_OT_REG ||
+            FD_OP_SIZE(&i_add, 0) != 8 ||
+            FD_OP_SIZE(&i_add, 1) != 8 ||
+            FD_OP_REG(&i_add, 1) != FD_REG_R14 ||
+            FD_OP_REG(&i_add, 0) != FD_OP_REG(&i_and, 0))
+        return (struct MacroInst){-1, 0};
+
+    if (!bundle->valid[idx + 2])
+        return (struct MacroInst){-1, 0};
+    FdInstr i_jmp = bundle->instrs[idx + 2];
+
+    if (FD_TYPE(&i_jmp) != FDI_JMP ||
+            FD_OP_TYPE(&i_jmp, 0) != FD_OT_REG ||
+            FD_OP_REG(&i_jmp, 0) != FD_OP_REG(&i_and, 0))
+        return (struct MacroInst){-1, 0};
+
+    return (struct MacroInst){i_and.size + i_add.size + i_jmp.size, 3};
+}
+
+static struct MacroInst macroinst_jmp_non32bit(struct Verifier *v, FdInstrBundle *bundle, size_t idx) {
     // andq %r15, %rX
     // andq $0xffffffffffffffe0, %rX
     // orq %r14, %rX
@@ -192,6 +238,19 @@ static struct MacroInst macroinst_jmp(struct Verifier *v, FdInstrBundle *bundle,
         return (struct MacroInst){-1, 0};
 
     return (struct MacroInst){offset, 4};
+}
+
+static struct MacroInst macroinst_jmp(struct Verifier *v, FdInstrBundle *bundle, size_t idx) {
+    switch (v->opts->cftype) {
+        case LFI_VARIABLE_MASK:
+            return macroinst_jmp_non32bit(v, bundle, idx);
+        case LFI_4GB_MASK:
+            return macroinst_jmp_32bit(v, bundle, idx);
+        case LFI_NOMASK_RET:
+            return macroinst_ret(v, bundle, idx);
+        default:
+            return (struct MacroInst){-1, 0};
+    }
 }
 
 static bool okdisp(int64_t disp) {
@@ -317,6 +376,64 @@ static struct MacroInst macroinst_call(struct Verifier *v, FdInstrBundle *bundle
     }
 
     return (struct MacroInst){offset, icount};
+}
+
+static struct MacroInst macroinst_call_32bit(struct Verifier *v, FdInstrBundle *bundle, size_t idx) {
+    size_t bundlesize = 32;
+
+    // andl $0xffffffe0, %eX
+    // addq %r14, %rX (or orq)
+    // nop*
+    // callq *%rX
+
+    FdInstr i_and = bundle->instrs[idx];
+    size_t offset = 0;
+    offset += i_and.size;
+
+    if (FD_TYPE(&i_and) != FDI_AND ||
+            FD_OP_TYPE(&i_and, 0) != FD_OT_REG ||
+            reserved(v, &i_and, 0) ||
+            FD_OP_SIZE(&i_and, 0) != 4 ||
+            FD_OP_TYPE(&i_and, 1) != FD_OT_IMM ||
+            FD_OP_IMM(&i_and, 1) != 0xffffffffffffffe0)
+        return (struct MacroInst){-1, 0};
+
+    if (!bundle->valid[idx + 1])
+        return (struct MacroInst){-1, 0};
+    FdInstr i_add = bundle->instrs[idx + 1];
+    offset += i_add.size;
+
+    if (!(FD_TYPE(&i_add) != FDI_OR && FD_TYPE(&i_add) != FDI_ADD) ||
+            FD_OP_TYPE(&i_add, 0) != FD_OT_REG ||
+            FD_OP_TYPE(&i_add, 1) != FD_OT_REG ||
+            FD_OP_SIZE(&i_add, 0) != 8 ||
+            FD_OP_SIZE(&i_add, 1) != 8 ||
+            FD_OP_REG(&i_add, 1) != FD_REG_R14 ||
+            FD_OP_REG(&i_add, 0) != FD_OP_REG(&i_and, 0))
+        return (struct MacroInst){-1, 0};
+
+    FdInstr i_jmp;
+    size_t count = i_and.size + i_add.size;
+    size_t icount = 2;
+    while(offset < bundlesize) {
+        if (!bundle->valid[icount])
+            return (struct MacroInst){-1, 0};
+        i_jmp = bundle->instrs[idx + icount];
+        offset += i_jmp.size;
+        icount++;
+        if (FD_TYPE(&i_jmp) != FDI_NOP)
+            break;
+    }
+
+    if ((v->addr + count) % bundlesize != 0)
+        return (struct MacroInst){-1, 0};
+
+    if (FD_TYPE(&i_jmp) != FDI_CALL ||
+            FD_OP_TYPE(&i_jmp, 0) != FD_OT_REG ||
+            FD_OP_REG(&i_jmp, 0) != FD_OP_REG(&i_and, 0))
+        return (struct MacroInst){-1, 0};
+
+    return (struct MacroInst){count, icount};
 }
 
 static struct MacroInst macroinst_hlt(struct Verifier *v, FdInstrBundle *bundle, size_t idx) {
@@ -773,8 +890,11 @@ static struct MacroInst macroinst(struct Verifier *v, FdInstrBundle *bundle, siz
     MACROINST(macroinst_store_three);
     MACROINST(macroinst_store_pext_multi);
     MACROINST(macroinst_load_two);
-    MACROINST(macroinst_jmp);
+    // MACROINST(macroinst_jmp);
+    MACROINST(macroinst_jmp_non32bit);
+    MACROINST(macroinst_jmp_32bit);
     MACROINST(macroinst_call);
+    MACROINST(macroinst_call_32bit);
     MACROINST(macroinst_rtcall);
     MACROINST(macroinst_modsp);
     MACROINST(macroinst_stos);

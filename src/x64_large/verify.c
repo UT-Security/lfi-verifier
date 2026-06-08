@@ -179,6 +179,9 @@ static void chkmem(struct Verifier *v, FdInstr *instr) {
                  FD_TYPE(instr) == FDI_DIV ||
                  FD_TYPE(instr) == FDI_FLD ||
                  FD_TYPE(instr) == FDI_FLDENV ||
+                 FD_TYPE(instr) == FDI_FLDCW ||
+                 FD_TYPE(instr) == FDI_FILD ||
+                 FD_TYPE(instr) == FDI_IMUL ||
                  FD_TYPE(instr) == FDI_MUL ||
                  FD_TYPE(instr) == FDI_IDIV ||
                  FD_TYPE(instr) == FDI_BT)

@@ -9,12 +9,21 @@ enum LFIBoxType {
     LFI_BOX_STORES,
 };
 
+enum LFICFType {
+    LFI_VARIABLE_MASK,
+    LFI_4GB_MASK,
+    LFI_NOMASK_RET,
+};
+
 struct LFIVOptions {
     // Sandbox type (full, stores-only).
     enum LFIBoxType box;
 
     // Guard size (only used for variable-length sandbox)
     int64_t guardsize;
+
+    // control flow type, default non-4gb mask
+    enum LFICFType cftype;
 
     // Disable BDD filter (x86-64).
     bool no_bdd;
