@@ -107,7 +107,7 @@ case FDI_DIV:
 // case FDI_ENCODEKEY128:
 // case FDI_ENCODEKEY256:
 // case FDI_ENDBR32:
-// case FDI_ENDBR64:
+case FDI_ENDBR64:
 // case FDI_ENQCMD:
 // case FDI_ENQCMDS:
 // case FDI_ENTER:

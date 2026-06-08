@@ -136,10 +136,12 @@ static struct MacroInst macroinst_movs(struct Verifier *v, FdInstrBundle *bundle
     return (struct MacroInst){offset, icount};
 }
 
-static struct MacroInst macroinst_ret(struct Verifier *v, FdInstrBundle *bundle, size_t idx) {
+struct MacroInst macroinst_ret(struct Verifier *v, FdInstrBundle *bundle, size_t idx) {
     FdInstr i_ret = bundle->instrs[idx];
-    if (FD_TYPE(&i_ret) == FDI_RET)
+    if (FD_TYPE(&i_ret) == FDI_RET) {
         return (struct MacroInst){i_ret.size, 1};
+    }
+    return (struct MacroInst){-1, 0};
 }
 
 static struct MacroInst macroinst_jmp_32bit(struct Verifier *v, FdInstrBundle *bundle, size_t idx) {
@@ -182,7 +184,7 @@ static struct MacroInst macroinst_jmp_32bit(struct Verifier *v, FdInstrBundle *b
     return (struct MacroInst){i_and.size + i_add.size + i_jmp.size, 3};
 }
 
-static struct MacroInst macroinst_jmp_non32bit(struct Verifier *v, FdInstrBundle *bundle, size_t idx) {
+static struct MacroInst macroinst_jmp(struct Verifier *v, FdInstrBundle *bundle, size_t idx) {
     // andq %r15, %rX
     // andq $0xffffffffffffffe0, %rX
     // orq %r14, %rX
@@ -238,19 +240,6 @@ static struct MacroInst macroinst_jmp_non32bit(struct Verifier *v, FdInstrBundle
         return (struct MacroInst){-1, 0};
 
     return (struct MacroInst){offset, 4};
-}
-
-static struct MacroInst macroinst_jmp(struct Verifier *v, FdInstrBundle *bundle, size_t idx) {
-    switch (v->opts->cftype) {
-        case LFI_VARIABLE_MASK:
-            return macroinst_jmp_non32bit(v, bundle, idx);
-        case LFI_4GB_MASK:
-            return macroinst_jmp_32bit(v, bundle, idx);
-        case LFI_NOMASK_RET:
-            return macroinst_ret(v, bundle, idx);
-        default:
-            return (struct MacroInst){-1, 0};
-    }
 }
 
 static bool okdisp(int64_t disp) {
@@ -892,11 +881,21 @@ static struct MacroInst macroinst(struct Verifier *v, FdInstrBundle *bundle, siz
     MACROINST(macroinst_store_three);
     MACROINST(macroinst_store_pext_multi);
     MACROINST(macroinst_load_two);
-    // MACROINST(macroinst_jmp);
-    MACROINST(macroinst_jmp_non32bit);
-    MACROINST(macroinst_jmp_32bit);
-    MACROINST(macroinst_call);
-    MACROINST(macroinst_call_32bit);
+    if (v->opts->ret_type == LFI_NOMASK_RET) {
+        MACROINST(macroinst_ret);
+    }
+    switch (v->opts->mask_type) {
+        case LFI_VARIABLE_MASK:
+            MACROINST(macroinst_call);
+            MACROINST(macroinst_jmp);
+            break;
+        case LFI_4GB_MASK:
+            MACROINST(macroinst_call_32bit);
+            MACROINST(macroinst_jmp_32bit);
+            break;
+    }
+    //MACROINST(macroinst_jmp);
+    // MACROINST(macroinst_call);
     MACROINST(macroinst_rtcall);
     MACROINST(macroinst_modsp);
     MACROINST(macroinst_stos);
