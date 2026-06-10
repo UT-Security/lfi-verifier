@@ -849,7 +849,7 @@ case FDI_IDIV:
 case FDI_IMUL:
  case FDI_IN:
 case FDI_INC:
-// case FDI_INCSSP:
+case FDI_INCSSP:
 // case FDI_INS:
 // case FDI_INT:
 // case FDI_INT1:
@@ -1107,7 +1107,7 @@ case FDI_RCR:
 // case FDI_RDPRU:
 // case FDI_RDRAND:
 // case FDI_RDSEED:
-// case FDI_RDSSP:
+case FDI_RDSSP:
 // case FDI_RDTSC:
 // case FDI_RDTSCP:
 // case FDI_REP_MONTMUL:
